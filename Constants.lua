@@ -1,4 +1,5 @@
 return {
+    ["MaxOccupants"] = 2, -- Permanent -- do not modify.
     ["RadiusOfEarth"] = 6371, -- According to real life. (Approx.)
     ["Rocket"] = {
         ["TemperatureChangePerStud"] = -0.0015625,
