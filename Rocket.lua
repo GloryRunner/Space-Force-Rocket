@@ -145,7 +145,7 @@ function Rocket:CloseHatch()
     end
 end
 
-function Rocket:AddPlayer(Player)
+function Rocket:AddPlayer(AddedPlayer)
     local function GetAvailableSeat()
         for _, Seat in ipairs(self.Seats) do
             if not table.find(self:GetOccupiedSeats(), Seat) then
@@ -154,14 +154,14 @@ function Rocket:AddPlayer(Player)
         end
     end
 
-    if Player.Character then
-        local Humanoid = Player.Character:FindFirstChildOfClass("Humanoid")
+    if AddedPlayer.Character then
+        local Humanoid = AddedPlayer.Character:FindFirstChildOfClass("Humanoid")
         if Humanoid then
             local AvailableSeat = GetAvailableSeat()
             AvailableSeat:Sit(Humanoid)
             table.insert(self.PlayerData, {
-                Player = Player,
-                OxygenTank = OxygenTank.new(Player),
+                Player = AddedPlayer,
+                OxygenTank = OxygenTank.new(AddedPlayer),
                 Seat = AvailableSeat
             })
         end
