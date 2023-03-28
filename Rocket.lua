@@ -1,4 +1,6 @@
 -- Written by GloryRunner (gloryy#9397)
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local OxygenTank = require(script.Parent.OxygenTank)
 local Stage = require(script.Parent.Stage)
 local Constants = require(script.Parent.Constants)
@@ -64,8 +66,14 @@ function Rocket.new()
     local self = setmetatable({}, Rocket)
     self.PlayerData = {}
     self.Temperature = Constants["Rocket"]["DefaultInternalTemperature"]
-    self.RocketModel = workspace["Saturn V Rocket"] -- TEMPORARY
+    self.RocketModel = ReplicatedStorage["Saturn V Rocket"]:Clone()
+    self.RocketModel.Parent = workspace
     self.OffsetPerMovement = 0
+    self.ProximityPromptConnection = nil
+    self.Seats = {
+        self.RocketModel.CrewCapsule.Interior.Seat1,
+        self.RocketModel.CrewCapsule.Interior.Seat2
+    }
     self.Stages = {
         ["1stStage"] = Stage.new(self.RocketModel["1stStage"]),
         ["SeparatorStage"] = Stage.new(self.RocketModel["SeparatorStage"]),
@@ -78,6 +86,11 @@ function Rocket.new()
     self.IsHatchOpen = false
     self.IsRocketActive = false
     return self
+end
+
+function Rocket:Destroy()
+    -- cleanup, remove all players
+    self = nil
 end
 
 function Rocket:Launch()
@@ -109,28 +122,80 @@ function Rocket:Launch()
 end
 
 function Rocket:OpenHatch()
+    local EntrancePrompt = self.RocketModel.LES.EntranceHatch.EntrancePrompt
+    self.IsHatchOpen = true
+    EntrancePrompt.Enabled = true
 
-    -- GOING TO INVOLVE MAKING CERTAIN PARTS UNCOLLIDABLE
-
-    local Hatch = self.RocketModel.CrewCapsule.Hatch
+    self.ProximityPromptConnection = EntrancePrompt.Triggered:Connect(function(Player)
+        local IsAlreadySeated = table.find(self:GetPlayersAboard(), Player)
+        local IsAtFullOccupancy = #self:GetPlayersAboard() < Constants["MaxOccupants"]
+        if not IsAtFullOccupancy and not IsAlreadySeated then
+            ReplicatedStorage.RocketRemotes.ModifyPromptVisibility:FireClient(Player, false)
+            self:AddPlayer(Player)
+        end
+    end)
 end
 
 function Rocket:CloseHatch()
-
-    -- GOING TO INVOLVE MAKING CERTAIN PARTS UNCOLLIDABLE
-
-    local Hatch = self.RocketModel.CrewCapsule.Hatch
+    local EntrancePrompt = self.RocketModel.LES.EntranceHatch.EntrancePrompt
+    self.IsHatchOpen = false
+    EntrancePrompt.Enabled = false
+    if self.ProximityPromptConnection then
+        self.ProximityPromptConnection:Disconnect()
+    end
 end
 
-function Rocket:SeatPlayer(SeatedPlayer)
-    local PlayerOxygenTank = OxygenTank.new()
-    table.insert(self.PlayerData, {Player = SeatedPlayer, Tank = PlayerOxygenTank})
+function Rocket:AddPlayer(Player)
+    local function GetAvailableSeat()
+        for _, Seat in ipairs(self.Seats) do
+            if not table.find(self:GetOccupiedSeats(), Seat) then
+                return Seat
+            end
+        end
+    end
+
+    if Player.Character then
+        local Humanoid = Player.Character:FindFirstChildOfClass("Humanoid")
+        if Humanoid then
+            local AvailableSeat = GetAvailableSeat()
+            AvailableSeat:Sit(Humanoid)
+            table.insert(self.PlayerData, {
+                Player = Player,
+                OxygenTank = OxygenTank.new(Player),
+                Seat = AvailableSeat
+            })
+        end
+    end
+end
+
+function Rocket:GetOccupiedSeats()
+    local OccupiedSeats = {}
+    for _, PlayerData in ipairs(self.PlayerData) do
+        table.insert(OccupiedSeats, PlayerData.Seat)
+    end
+    return OccupiedSeats
+end
+
+function Rocket:RemovePlayer(Player)
+    local WorldSpawnCF = workspace.SpawnLocation.CFrame
+    local Character = Player.Character
+    local IsPlayerAboard = table.find(self:GetPlayersAboard(), Player)
+    if IsPlayerAboard then
+        if Character then
+            Character:PivotTo(WorldSpawnCF)
+        end
+        for Index, PlayerData in ipairs(self.PlayerData) do
+            if PlayerData.Player == Player then
+                table.remove(self.PlayerData, Index)
+            end
+        end
+    end
 end
 
 function Rocket:GetPlayersAboard()
     local PlayersAboard = {}
-    for _, Dict in ipairs(self.PlayerData) do
-        table.insert(PlayersAboard, Dict["Player"])
+    for _, PlayerData in ipairs(self.PlayerData) do
+        table.insert(PlayersAboard, PlayerData.Player)
     end
     return PlayersAboard
 end
@@ -143,11 +208,9 @@ function Rocket:GetTemperature()
     return self.Temperature
 end
 
-function Rocket:GetPosition()
-    return self.RocketModel:GetPivot().Position
-end
-
 function Rocket:GetCoordinates()
+    -- Broken
+
     local RocketPos = self:GetPosition()
     local RadiusOfEarth = Constants["RadiusOfEarth"]
     local Latitude, Longitude = math.asin(RocketPos.Z/RadiusOfEarth), math.atan2(RocketPos.Y, RocketPos.X)
@@ -159,30 +222,24 @@ function Rocket:GetCoordinates()
 end
 
 function Rocket:GetAltitude()
-    return self:GetPosition().Y
+    local RocketPosition = self.RocketModel:GetPivot().Position
+    return RocketPosition.Y
 end
 
-function Rocket:GetSpeed()
+function Rocket:GetVelocity()
     -- Returns the speed of the Rocket in studs per second.
-    local CurrentPosY = self:GetPosition().Y
+    local CurrentAltitude = self:GetAltitude()
     task.wait(1)
-    local RateOfChange = math.ceil(math.abs(self:GetPosition().Y - CurrentPosY))
-    return RateOfChange
+    local AltitudeDelta = math.ceil(math.abs(self:GetAltitude() - CurrentAltitude))
+    return AltitudeDelta
 end
 
 function Rocket:GetDistFromEarth()
-    local LaunchpadPos = Vector3.new(3888.574, 539.532, -2782.891)
-    local Dist = (self:GetPosition() - LaunchpadPos).Magnitude
+    local Launchpad = workspace.Platform.Main
+    local SurfacePos = Vector3.new(Launchpad.Position.X, Launchpad.Position.Y + Launchpad.Size.Y / 2, Launchpad.Position.Z)
+    local RocketPosition = self.RocketModel:GetPivot().Position
+    local Dist = (RocketPosition - SurfacePos).Magnitude
     return Dist
-end
-
-function Rocket:KickPlayer(Player)
-    -- Teleports player to the area around the Launchpad.
-    local CFAroundLaunchpad = CFrame.new(3835.238, 269.762, -2842.648)
-    local Character = Player.Character
-    if Character then
-        Character:PivotTo(CFAroundLaunchpad)
-    end
 end
 
 return Rocket
