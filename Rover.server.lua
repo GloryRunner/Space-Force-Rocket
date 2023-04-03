@@ -1,4 +1,3 @@
-local Debris = game:GetService("Debris")
 local RunService = game:GetService("RunService")
 
 local Part = workspace:WaitForChild("Part")
