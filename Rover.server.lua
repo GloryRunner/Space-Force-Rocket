@@ -10,7 +10,7 @@ local BodyPosition = Part.BodyPosition
 RunService.Heartbeat:Connect(function()
     local Origin = Part.Position
     local DirectionCF = CFrame.lookAt(Part.Position + -Part.CFrame.UpVector * RAY_DISTANCE, Part.Position)
-    local RayParams = RaycastParams.new({Part}, Enum.RaycastFilterType.Exclude, true, nil, true)
+    local RayParams = RaycastParams.new({Part}, Enum.RaycastFilterType.Exclude, true, nil, true)    -- Need to implement a better solution to getting surface normals immediately.
     local RayResult = workspace:Raycast(Origin, DirectionCF.Position, RayParams)
 
     if RayResult then
