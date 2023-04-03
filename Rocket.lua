@@ -1,6 +1,8 @@
 -- Written by GloryRunner (gloryy#9397)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local RocketRemotes = ReplicatedStorage.RocketRemotes
 local OxygenTank = require(script.Parent.OxygenTank)
 local Stage = require(script.Parent.Stage)
 local Constants = require(script.Parent.Constants)
@@ -62,6 +64,27 @@ local function EnableRocketBlastoffFX(RocketObject)
     end
 end
 
+local function ModifyJumpAbility(Character, CanJump)
+    local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+    local DefaultJumpHeight = 7.2
+    if Humanoid then
+        if CanJump then
+            Humanoid.JumpHeight = DefaultJumpHeight
+        else
+            Humanoid.JumpHeight = 0
+        end
+    end
+end
+
+local function ListenForPlayerLeave(RocketObject)
+    RocketObject.ListenForPlayerLeave = Players.PlayerRemoving:Connect(function(Player)
+        local IsPlayerAboard = table.find(RocketObject:GetPlayersAboard(), Player)
+        if IsPlayerAboard then
+            RocketObject:RemovePlayer(Player) -- <--- Could have issues especially because we're firing remotes on player leave which could error
+        end
+    end)
+end
+
 function Rocket.new()
     local self = setmetatable({}, Rocket)
     self.PlayerData = {}
@@ -69,6 +92,7 @@ function Rocket.new()
     self.RocketModel = ReplicatedStorage["Saturn V Rocket"]:Clone()
     self.RocketModel.Parent = workspace
     self.OffsetPerMovement = 0
+    self.PlayerLeaveConnection = nil
     self.ProximityPromptConnection = nil
     self.Seats = {
         self.RocketModel.CrewCapsule.Interior.Seat1,
@@ -89,11 +113,12 @@ function Rocket.new()
 end
 
 function Rocket:Destroy()
-    -- cleanup, remove all players
+    -- cleanup event listeners, remove all players
     self = nil
 end
 
 function Rocket:Launch()
+    ListenForPlayerLeave(self)
     self:CloseHatch()
     self.ActiveStage = self.Stages["1stStage"]
     self.IsRocketInitializing = true
@@ -125,12 +150,11 @@ function Rocket:OpenHatch()
     local EntrancePrompt = self.RocketModel.LES.EntranceHatch.EntrancePrompt
     self.IsHatchOpen = true
     EntrancePrompt.Enabled = true
-
     self.ProximityPromptConnection = EntrancePrompt.Triggered:Connect(function(Player)
         local IsAlreadySeated = table.find(self:GetPlayersAboard(), Player)
-        local IsAtFullOccupancy = #self:GetPlayersAboard() < Constants["MaxOccupants"]
+        local IsAtFullOccupancy = #self:GetPlayersAboard() == Constants["MaxOccupants"]
         if not IsAtFullOccupancy and not IsAlreadySeated then
-            ReplicatedStorage.RocketRemotes.ModifyPromptVisibility:FireClient(Player, false)
+            RocketRemotes.ModifyPromptVisibility:InvokeClient(Player, false)
             self:AddPlayer(Player)
         end
     end)
@@ -159,6 +183,15 @@ function Rocket:AddPlayer(AddedPlayer)
         if Humanoid then
             local AvailableSeat = GetAvailableSeat()
             AvailableSeat:Sit(Humanoid)
+            task.defer(function()-- Weird issue where if you anchor the character shortly after calling :sit() it doesn't sit the char.
+                repeat       -- Would prefer to check overlapping bounding boxes to be more certain instead of abritrarily yielding the thread
+                    Humanoid.Sit = true
+                until task.wait(1)
+                ModifyJumpAbility(AddedPlayer.Character, false)
+            end)
+            RocketRemotes.ModifyResetAbility:InvokeClient(AddedPlayer, false)
+            RocketRemotes.DisableCapsuleCollisions:InvokeClient(AddedPlayer, self.RocketModel)
+            RocketRemotes.ModifyZoomDist:InvokeClient(AddedPlayer, Constants["CameraMaxZoomDist"])
             table.insert(self.PlayerData, {
                 Player = AddedPlayer,
                 OxygenTank = OxygenTank.new(AddedPlayer),
@@ -183,7 +216,11 @@ function Rocket:RemovePlayer(Player)
     if IsPlayerAboard then
         if Character then
             Character:PivotTo(WorldSpawnCF)
+            Character:FindFirstChildOfClass("Humanoid").Sit = false
+            ModifyJumpAbility(Character, true)
         end
+        RocketRemotes.ModifyResetAbility:InvokeClient(Player, true)
+        RocketRemotes.ModifyZoomDist:InvokeClient(Player, game:GetService("StarterPlayer").CameraMaxZoomDistance)
         for Index, PlayerData in ipairs(self.PlayerData) do
             if PlayerData.Player == Player then
                 table.remove(self.PlayerData, Index)
@@ -211,7 +248,7 @@ end
 function Rocket:GetCoordinates()
     -- Broken
 
-    local RocketPos = self:GetPosition()
+    local RocketPos = self.RocketModel:GetPivot().Position
     local RadiusOfEarth = Constants["RadiusOfEarth"]
     local Latitude, Longitude = math.asin(RocketPos.Z/RadiusOfEarth), math.atan2(RocketPos.Y, RocketPos.X)
     --local Latitude, Longitude = math.atan2(RocketPos.Y, math.sqrt(RocketPos.X ^ 2 + RocketPos.Z ^ 2)), math.atan2(RocketPos.X, RocketPos.Z)
