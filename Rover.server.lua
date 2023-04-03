@@ -9,7 +9,7 @@ local RAY_DISTANCE = 100
 RunService.Heartbeat:Connect(function()
     local Origin = Part.Position
     local DirectionCF = CFrame.lookAt(Part.Position + -Part.CFrame.UpVector * RAY_DISTANCE, Part.Position)
-    local RayParams = RaycastParams.new({Part}, Enum.RaycastFilterType.Exclude, true, nil, true)    -- Switch to using cross product to get surface normal ASAP.
+    local RayParams = RaycastParams.new({Part}, Enum.RaycastFilterType.Exclude, true, nil, true)    -- Switch to using cross product to get surface normal before release.
     local RayResult = workspace:Raycast(Origin, DirectionCF.Position, RayParams)
 
     if RayResult then
