@@ -1,9 +1,9 @@
 local RunService = game:GetService("RunService")
 
 local Part = workspace:WaitForChild("Part")
+local BodyPosition = Part.BodyPosition
 
 local RAY_DISTANCE = 100
-local BodyPosition = Part.BodyPosition
 
 
 RunService.Heartbeat:Connect(function()
