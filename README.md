@@ -1,2 +1,2 @@
 # Space-Force-Rocket
-A rocket I'm developing for USAF's Space Force. A work-in-progress.
+An abandoned rocket project for USAF's Space Force.
