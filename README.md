@@ -1,2 +1,2 @@
 # Space-Force-Rocket
-An project for USAF's Space Force.
+A project for USAF's Space Force.
